@@ -94,6 +94,6 @@ int main(int argc, char **argv) {
     //printf("%d\n", check_hunt_status(huntRef, "hunt1"));
 
     int data = 12345;
-    
+    int fd = open("sample.txt", O_RDONLY | O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
     return 0;
 }
