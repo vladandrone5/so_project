@@ -1,8 +1,5 @@
 #!/bin/bash
 
-if [ "$#" -ne 1 ]; then
-    echo "usage: $0 <arg1>"
-    exit 1
-fi
+var=`date +"%d %m %Y %H:%M:%S"`
 
-echo "this is a shell script"
+echo "commit $var"
