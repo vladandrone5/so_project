@@ -5,11 +5,15 @@
 #include <string.h>
 #include <stdlib.h>
 #include <fcntl.h>
+#include <dirent.h>
 
+#define ARRAY_SIZE 400
 #define NAME_SIZE 100
 #define LINE_SIZE 1000
 
 typedef enum {EXISTS, NON_EXISTENT}status_code;
+
+/*structuri specifice-----------------------------------*/
 
 typedef struct {
     char treasure_id[10];
@@ -23,8 +27,12 @@ typedef struct {
 typedef struct hnt{
     char hunt_name[NAME_SIZE + 1];
     status_code h_code;
+    treasure t[ARRAY_SIZE];
+    char log[NAME_SIZE + 1];
     struct hnt *next;
 }hunt;
+
+/*------------------------------------------------------*/
 
 void usage(char *name) {
     fprintf(stderr, "usage: %s <command> <hunt_id> <treasure_id>\n", name);
@@ -37,51 +45,39 @@ void view(char *hunt_id, char *treasure_id);
 void remove_treasure(char *hunt_id, char *id);
 void remove_hunt(char *hunt_id);
 
-hunt *create_hunt_directory(char *dir_name) {
-    hunt *h = malloc(sizeof(hunt));
-    strcpy(h->hunt_name, dir_name);
-    mkdir(dir_name, 0777);
-    h->next = NULL;
-    h->h_code = EXISTS;
+hunt *create_hunt(char *name) {
+    hunt *tmp = malloc(sizeof(hunt));
 
-    return h;
+    tmp->next = NULL;
+    strcpy(tmp->hunt_name, name);
+
+    int dir_op = mkdir(name, 0777);
+    if(dir_op == -1) {
+        perror("error creating specified directory\n");
+        exit(-1);
+    }
+
+    tmp->h_code = EXISTS;
+
+    return tmp;
 }
 
-status_code check_hunt_status(hunt *huntRef, char *hunt_id) {
-    hunt *tmp = huntRef;
-    while(strcmp(huntRef->hunt_name, hunt_id) != 0) {
-        tmp = tmp->next;
+void list(char *hunt_id) {
+    DIR *dir;
+    struct dirent *entry;
+
+    if((dir = opendir(hunt_id)) == NULL) {
+        perror("error opening directory in function 'list'\n");
+        exit(-1);
     }
 
-    return (tmp->h_code == EXISTS) ? EXISTS : NON_EXISTENT;
-}
-
-void add_hunt(hunt *huntRef, char *hunt_id) {
-    if(huntRef == NULL) {
-        huntRef = create_hunt_directory(hunt_id);
-        return;
+    while((entry = readdir(dir)) != NULL) {
+        printf("%s\n", entry->d_name);
     }
 
-    hunt *tmp = huntRef;
-    while(tmp->next != NULL) {
-        if(strcmp(tmp->hunt_name, hunt_id) == 0) {
-            return;
-        }
-        tmp = tmp->next;
-    }
-    hunt *newHunt = create_hunt_directory(hunt_id);
-    tmp->next = newHunt;
+    closedir(dir);
 
     return;
-}
-
-void print_hunt_list(hunt *huntRef) {
-    hunt *tmp = huntRef;
-
-    while(tmp) {
-        printf("%s\n", tmp->hunt_name);
-        tmp = tmp->next;
-    }
 }
 
 int main(int argc, char **argv) {
@@ -93,7 +89,7 @@ int main(int argc, char **argv) {
     //huntRef = create_hunt_directory("hunt1");
     //printf("%d\n", check_hunt_status(huntRef, "hunt1"));
 
-    int data = 12345;
-    int fd = open("sample.txt", O_RDONLY | O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+    
+
     return 0;
 }
