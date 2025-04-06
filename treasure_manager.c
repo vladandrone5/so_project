@@ -51,21 +51,21 @@ void remove_treasure(char *hunt_id, char *id); // removes a treasure
 void remove_hunt(char *hunt_id); // removes a hunt
 void process_operation(char *operation, char *hunt_id, char *treasure_id);
 
-treasure *create_treasure(char *treasure_id) {
-    treasure *tmp = malloc(sizeof(treasure));
+treasure create_treasure(char *treasure_id) {
+    treasure tmp;
 
-    strcpy(tmp->treasure_id, treasure_id);
-    strcpy(tmp->username, "User");
+    strcpy(tmp.treasure_id, treasure_id);
+    sprintf(tmp.username, "%s", "user");
 
     srand(time(NULL));
 
-    tmp->latitude = rand() % 1000;
-    tmp->longitude = rand() % 1000;
+    tmp.latitude = rand() % 1000;
+    tmp.longitude = rand() % 1000;
 
-    strcpy(tmp->clue, "this is a clue");
-    tmp->value = rand() % 10;
+    strcpy(tmp.clue, "this is a clue");
+    tmp.value = rand() % 10;
 
-    tmp->t_code = EXISTS;
+    tmp.t_code = EXISTS;
 
     return tmp;
 }
@@ -215,7 +215,6 @@ void add(char *hunt_id) { // ADD TREASURE TO HUNT
 
     bytes_written = write(fd, treasure_name, strlen(treasure_name));
     bytes_written = write(fd, "\n", 1);
-    
 
 
     if(bytes_written == -1) {
@@ -383,17 +382,45 @@ void remove_hunt(char *hunt_id) {
     return;
 }
 
+void process_operation(char *operation, char *hunt_id, char *treasure_id) {
+    if(strcmp(operation, "--add") == 0) {
+        add(hunt_id);
+        return;
+    }
+    else if(strcmp(operation, "--remove") == 0) {
+        remove_treasure(hunt_id, treasure_id);
+        return;
+    }
+    else if(strcmp(operation, "--create_hunt") == 0) {
+        hunt *h = NULL;
+        h = create_hunt(hunt_id);
+        return;
+    }
+    else if(strcmp(operation, "--list") == 0) {
+        list(hunt_id);
+        return;
+    }
+    else if(strcmp(operation, "--remove_hunt") == 0) {
+        remove_hunt(hunt_id);
+        return;
+    }
+
+    return;
+}
+
 int main(void) {
 
     //hunt *huntRef = NULL;
     //huntRef = create_hunt_directory("hunt1");
     //printf("%d\n", check_hunt_status(huntRef, "hunt1"));
 
-    hunt *h = NULL;
+    //hunt *h = NULL;
     //h = create_hunt("Hunt001");
     //remove_hunt("Hunt001");
     //add("Hunt001");
     //remove_treasure("Hunt001", "Treasure1.txt");
     //list("Hunt001");
+    
+
     return 0;
 }
