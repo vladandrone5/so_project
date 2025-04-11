@@ -13,9 +13,7 @@
 #define NAME_SIZE 100
 #define LINE_SIZE 1000
 
-//for testing purposes for the moment will be one treasure per file
 
-typedef enum {EXISTS, NON_EXISTENT}status_code;
 
 /*structuri specifice-----------------------------------*/
 
@@ -25,7 +23,6 @@ typedef struct {
     double latitude, longitude;
     char clue[LINE_SIZE + 1];
     int value;
-    status_code t_code;
 }treasure;
 
 /*------------------------------------------------------*/
@@ -43,25 +40,6 @@ void view(char *hunt_id, char *treasure_id); // view details of specific treasur
 void remove_treasure(const char *hunt_id, const char *treasure_id); // removes a treasure
 void remove_hunt(char *hunt_id); // removes a hunt
 void process_operation(char *operation, char *hunt_id, char *treasure_id);
-
-treasure create_treasure(char *treasure_id) {
-    treasure tmp;
-
-    strcpy(tmp.treasure_id, treasure_id);
-    sprintf(tmp.username, "%s", "user");
-
-    srand(time(NULL));
-
-    tmp.latitude = rand() % 1000;
-    tmp.longitude = rand() % 1000;
-
-    strcpy(tmp.clue, "this is a clue");
-    tmp.value = rand() % 10;
-
-    tmp.t_code = EXISTS;
-
-    return tmp;
-}
 
 void create_hunt(const char *hunt_id) {
     char path[100];
