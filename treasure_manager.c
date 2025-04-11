@@ -37,8 +37,8 @@ void usage(char *name) {
 
 //functii de implementat
 
-void add(char *hunt_id); // adds new treasure to the specified hunt
-void list(char *hunt_id); // list all treasures in specified hunt
+void add(const char *hunt_id, treasure t); // adds new treasure to the specified hunt
+void list(const char *hunt_id); // list all treasures in specified hunt
 void view(char *hunt_id, char *treasure_id); // view details of specific treasure
 void remove_treasure(const char *hunt_id, const char *treasure_id); // removes a treasure
 void remove_hunt(char *hunt_id); // removes a hunt
@@ -118,9 +118,30 @@ void log_action(const char *hunt_id, const char *action) {
     return;
 }
 
-void add_treasure(const char *hunt_id, treasure t) {
+void add(const char *hunt_id, treasure t) {
     char path[100];
     snprintf(path, sizeof(path), "%s/%s", hunt_id, "treasures.dat");
+
+    char dirpath[100];
+    snprintf(dirpath, sizeof(dirpath), "./");
+    DIR *dir;
+    if((dir = opendir(dirpath)) == NULL) {
+        perror("error opening directory\n");
+        exit(-1);
+    }
+
+    struct dirent *data;
+    int found_dir = 0;
+    while((data = readdir(dir)) != NULL) { //caut daca exista hunt-ul deja
+        if(data->d_type == DT_DIR && strcmp(data->d_name, hunt_id) == 0) {
+            found_dir = 1;
+            break;
+        }
+    }
+
+    if(found_dir == 0) {
+        create_hunt(hunt_id);
+    }
 
     int fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0666);
     if(fd == -1) {
@@ -129,18 +150,33 @@ void add_treasure(const char *hunt_id, treasure t) {
     }
 
     //input based treasure
-    t = (treasure){0};
-    char line[1000];
+
+   t = (treasure){0};
+
+    char buffer[256];
+
     printf("Enter id: ");
-    fgets(line, sizeof(line), stdin);
+    fgets(buffer, sizeof(buffer), stdin);
+    buffer[strcspn(buffer, "\n")] = 0; // dau remove la '\n' din buffer
+    strncpy(t.treasure_id, buffer, 9);
+
     printf("Enter username: ");
-    fgets(line, sizeof(line), stdin);
-    printf("Enter coordinates: ");
-    scanf("%lf%lf", &t.latitude, &t.longitude);
+    fgets(buffer, sizeof(buffer), stdin);
+    buffer[strcspn(buffer, "\n")] = 0;
+    strncpy(t.username, buffer, NAME_SIZE - 1);
+
+    printf("Enter coordinates (latitude and longitude): ");
+    fgets(buffer, sizeof(buffer), stdin);
+    sscanf(buffer, "%lf %lf", &t.latitude, &t.longitude);
+
     printf("Enter clue: ");
-    fgets(line, sizeof(line), stdin);
+    fgets(buffer, sizeof(buffer), stdin);
+    buffer[strcspn(buffer, "\n")] = 0;
+    strncpy(t.clue, buffer, LINE_SIZE - 1);
+
     printf("Enter value: ");
-    fgets(line, sizeof(line), stdin);
+    fgets(buffer, sizeof(buffer), stdin);
+    sscanf(buffer, "%d", &t.value);
 
     if(write(fd, &t, sizeof(treasure)) == -1) {
         perror("error writting to treasure file\n");
@@ -151,7 +187,7 @@ void add_treasure(const char *hunt_id, treasure t) {
     close(fd);
 
     char action[100];
-    sprintf(action, "added treasure%s\n", t.treasure_id);
+    sprintf(action, "added treasure%s from %s\n", t.treasure_id, hunt_id);
     log_action(hunt_id, action);
 
     return;
@@ -162,54 +198,43 @@ void view_treasure(const char *hunt_id, char *treasure_id) {
     char path[100];
     snprintf(path, sizeof(path), "%s/treasures.dat", hunt_id); // folosesc .dat pt a pune orice tip de date
 
+
     int fd = open(path, O_RDONLY);
     if(fd == -1) {
         perror("error opening treasure file\n");
         exit(-1);
     }
 
+    int ok = 0;
     treasure t;
     ssize_t read_size;
     while((read_size = read(fd, &t, sizeof(treasure))) > 0) { // citesc direct tot struct-ul
         if(strcmp(treasure_id, t.treasure_id) == 0) {
+            ok = 1;
             printf("Treasure ID: %s\n", t.treasure_id);
             printf("Username: %s\n", t.username);
             printf("Coordinates: (%f, %f)\n", t.latitude, t.longitude);
             printf("Clue: %s\n", t.clue);
-            printf("Value: %d\n", t.value);
-            break;
+            printf("Value: %d\n\n", t.value);
+            break; //presupun ca id-ul este unic
         }
+    }
+
+    if(ok == 0) {
+        perror("file specified does not exist\n");
+        exit(-1);
     }
 
     close(fd);
 
     char action[100];
-    sprintf(action, "viewed treasure%s\n", t.treasure_id);
+    sprintf(action, "viewed treasure%s from %s\n", t.treasure_id, hunt_id);
     log_action(hunt_id, action);
 
     return;
 }
 
-void list(char *hunt_id) { // LIST ALL TREASURE FILES
-    DIR *dir;
-    struct dirent *entry;
-
-    if((dir = opendir(hunt_id)) == NULL) { 
-        perror("error opening directory in function 'list'\n");
-        exit(-1);
-    }
-    printf("List of all the treasure files:\n");
-    while((entry = readdir(dir)) != NULL) { // parcurg tot directory-ul
-        if(strstr(entry->d_name, "log") || strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
-        printf("%s\n", entry->d_name);
-    }
-
-    closedir(dir);
-
-    return;
-}
-
-void list_treasures(const char *hunt_id) {
+void list(const char *hunt_id) {
     char path[100];
     snprintf(path, sizeof(path), "%s/treasures.dat", hunt_id);
 
@@ -241,7 +266,7 @@ void list_treasures(const char *hunt_id) {
     close(fd);
 
     char action[100];
-    sprintf(action, "listed treasures from hunt %s\n", hunt_id);
+    sprintf(action, "listed treasures from %s\n", hunt_id);
     log_action(hunt_id, action);
 
     return;
@@ -305,14 +330,14 @@ void remove_treasure(const char *hunt_id, const char *treasure_id) {
     
     close(fd);
     char action[100];
-    sprintf(action, "removed treasure%s\n", treasure_id);
+    sprintf(action, "removed treasure%s from %s\n", treasure_id, hunt_id);
     log_action(hunt_id, action);
 
     return;
 
 }
 
-int has_files_in_directory(char *dirpath) {
+int has_files_in_directory(char *dirpath) { //verific directory-ul pt stergere hunt
     DIR *dir;
     if((dir = opendir(dirpath)) == NULL) {
         perror("error opening directory\n");
@@ -359,6 +384,27 @@ void delete_files(char *directory_path) {
     return;
 }
 
+void print_log_info(char *hunt_id) {
+    char path[256];
+    snprintf(path, sizeof(path), "%s/logged_hunt", hunt_id);
+
+    int fd = open(path, O_RDONLY);
+    if(fd == -1) {
+        perror("error opening log file\n");
+        exit(-1);
+    }
+
+    char buffer[1024];
+    ssize_t read_size;
+    while((read_size = read(fd, buffer, sizeof(buffer))) > 0) {
+        printf("%s\n", buffer);
+    }
+
+    close(fd);
+
+    return;
+}
+
 void remove_hunt(char *hunt_id) {
     delete_files(hunt_id);
     rmdir(hunt_id);
@@ -376,19 +422,15 @@ void remove_hunt(char *hunt_id) {
 void process_operation(char *operation, char *hunt_id, char *treasure_id) {
     if(strcmp(operation, "--add") == 0) {
         treasure t = {0};
-        add_treasure(hunt_id, t);
+        add(hunt_id, t);
         return;
     }
     else if(strcmp(operation, "--remove") == 0) {
         remove_treasure(hunt_id, treasure_id);
         return;
     }
-    else if(strcmp(operation, "--create_hunt") == 0) {
-        create_hunt(hunt_id);
-        return;
-    }
     else if(strcmp(operation, "--list") == 0) {
-        list_treasures(hunt_id);
+        list(hunt_id);
         return;
     }
     else if(strcmp(operation, "--remove_hunt") == 0) {
@@ -401,6 +443,10 @@ void process_operation(char *operation, char *hunt_id, char *treasure_id) {
     }
     else if(strcmp(operation, "--create_hunt") == 0) {
         create_hunt(hunt_id);
+        return;
+    }
+    else if(strcmp(operation, "--show_log") == 0) {
+        print_log_info(hunt_id);
         return;
     }
 
