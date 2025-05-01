@@ -13,9 +13,12 @@
 #define NAME_SIZE 100
 #define LINE_SIZE 1000
 
+int treasure_count = 0;
+
 /*
 Current progress:
--nothing changed from phase 1
+-treasure counting variable added
+-added treasure count function
 */
 
 /*structuri specifice-----------------------------------*/
@@ -400,6 +403,27 @@ void remove_hunt(char *hunt_id) {
     return;
 }
 
+int count_treasures(char *hunt_id) {
+    char path[256];
+    snprintf(path, sizeof(path), "%s/treasures.dat", hunt_id);
+
+    int fd = open(path, O_RDONLY);
+    if(fd == -1) {
+        perror("error opening file\n");
+        exit(-1);
+    }
+
+    int count = 0;
+    treasure t;
+    ssize_t read_size;
+    while((read_size = read(fd, &t, sizeof(treasure))) > 0) {
+        count++;
+    }
+
+    close(fd);
+    return count;
+}
+
 void process_operation(char *operation, char *hunt_id, char *treasure_id) {
     if(strcmp(operation, "--add") == 0) {
         treasure t = {0};
@@ -424,6 +448,16 @@ void process_operation(char *operation, char *hunt_id, char *treasure_id) {
     }
     else if(strcmp(operation, "--create_hunt") == 0) {
         create_hunt(hunt_id);
+        return;
+    }
+    else if(strcmp(operation, "--count_treasures") == 0) {
+        int cnt = count_treasures(hunt_id);
+        if(cnt == 1) {
+            printf("%s contains %d treasure\n", hunt_id, count_treasures(hunt_id));    
+        }
+        else {
+            printf("%s contains %d treasures\n", hunt_id, count_treasures(hunt_id));
+        }
         return;
     }
     else if(strcmp(operation, "--show_log") == 0) {
