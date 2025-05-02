@@ -23,7 +23,7 @@ typedef struct {
     int value;
 }treasure;
 
-//Functii de implementat
+//Functii de implementat 
 
 void start(); // porneste monitorul
 void create_loop(); // creeaza loop pt monitor
@@ -33,6 +33,13 @@ void list_treasures(char *hunt_id);
 void stop();
 void manage_child_sig(int signal);
 
+//Functii optionale (treasure_manager)
+
+void add_treasure(char *hunt_id);
+void create_hunt(char *hunt_id);
+
+
+/*------------------------------------*/
 
 void manage_signals(int signal) {
     if(signal == SIGUSR1) {
@@ -44,9 +51,9 @@ void manage_signals(int signal) {
 
         char command[SIZE], hunt_id[SIZE], treasure_id[SIZE];
 
-        //system("gcc -Wall -o treasure_manager new_treasure_manager.c");
+        system("gcc -Wall -o treasure_manager new_treasure_manager.c");
 
-        if(fscanf(f, "%s%s%s", command, hunt_id, treasure_id) != 3) {
+        if(fscanf(f, "%s %s %s", command, hunt_id, treasure_id) != 3) {
             perror("error reading content\n");
             exit(-1);
         }
@@ -56,39 +63,51 @@ void manage_signals(int signal) {
             exit(-1);
         }
 
-        if(strcmp(command, "list_hunts") == 0) {
-            //system("ls -d */ | cut -f1 -d'/'");
-            DIR *dir = opendir("./");
+        if(strcmp(command, "list_hunts") == 0) { //LIST_HUNTS
+            DIR *dir = opendir("."); // directorul curent -> caut toate hunt-urile
             if(dir == NULL) {
                 perror("error opening directory\n");
                 exit(-1);
             }
-            
+
             struct dirent *data;
 
             while((data = readdir(dir)) != NULL) {
-                if(data->d_type == DT_DIR) {
-                    char op[256];
-                    strcpy(op, "");
-                    snprintf(op, sizeof(op), "./treasure_manager --count_treasures %s", data->d_name);
-                    system(op);
+                if(data->d_type == DT_DIR && strcmp(data->d_name, ".") != 0 && strcmp(data->d_name, "..") != 0) {
+                    char path[256];
+                    snprintf(path, sizeof(path), "%s/treasures.dat", data->d_name);
+
+                    FILE *tr_f = fopen(path, "rb");
+                    if(tr_f == NULL) { // verific daca exista file-ul de treasure, daca nu sare peste
+                        continue;
+                    }
+
+                    int cnt = 0;
+                    treasure t;
+                    while(fread(&t, sizeof(treasure), 1, tr_f) == 1) {
+                        cnt++;
+                    }
+
+                    fclose(tr_f);
+
+                    printf("Hunt: %s - Treasures: %d\n", data->d_name, cnt);
                 }
             }
 
             closedir(dir);
         }
-        else if(strcmp(command, "list_treasures") == 0) {
+        else if(strcmp(command, "list_treasures") == 0) { // LIST_TREASURES
             char op[256];
             snprintf(op, sizeof(op), "./treasure_manager --list %s ceva", hunt_id);
             system(op);
         }
-        else if(strcmp(command, "view_treasure") == 0) {
+        else if(strcmp(command, "view_treasure") == 0) { // VIEW_TREASURES
             char op[256];
             snprintf(op, sizeof(op), "./treasure_manager --view_treasure %s %s", hunt_id, treasure_id);
             system(op);
         }
-        else if(signal == SIGTERM) {
-            usleep(500000);
+        else if(signal == SIGTERM) { // SLEEP CASE
+            usleep(5000000);
             exit(0);
         }
 
@@ -152,17 +171,7 @@ void stop() {
 
 void view_treasure(char *hunt_id, char *treasure_id) {
     if(running_code == 0) {
-        printf("no monitor running\n");
-        return;
-    }
-
-    char op[256];
-    snprintf(op, sizeof(op), "./treasure_manager --view_treasure %s %s", hunt_id, treasure_id);
-
-
-    int command = system("gcc -Wall -o treasure_manager new_treasure_manager.c");
-    if(command == -1) {
-       perror("error compiling file\n");
+        perror("monitor not running\n");
         exit(-1);
     }
 
@@ -170,18 +179,10 @@ void view_treasure(char *hunt_id, char *treasure_id) {
     fprintf(f, "view_treasure %s %s\n", hunt_id, treasure_id);
     fclose(f);
 
-    if(system(op) == -1) {
-        perror("error for \"view_treasure\" function");
-        exit(-1);
-    }
-    
-
     if(kill(monitor_pid, SIGUSR1) == -1) {
         perror("error killing monitor\n");
         exit(-1);
     }
-
-    return;
 }
 
 void list_hunts() { // voi merge pe denumirea standard "Hunt..."
@@ -191,7 +192,7 @@ void list_hunts() { // voi merge pe denumirea standard "Hunt..."
     }
 
     FILE *f = fopen(commands, "w");
-    fprintf(f, "list_hunts <> <>\n");
+    fprintf(f, "list_hunts ceva ceva\n");
     fclose(f);
 
 
@@ -202,25 +203,14 @@ void list_hunts() { // voi merge pe denumirea standard "Hunt..."
 }
 
 void list_treasures(char *hunt_id) {
-    if(running_code == 0) {
-        perror("no monitor running\n");
-        exit(-1);
+    if (!running_code) {
+        printf("Monitor not running.\n");
+        return;
     }
-
-    FILE *f = fopen(commands, "w");
-    if(f == NULL) {
-        perror("error open command file\n");
-        exit(-1);
-    }
-
-    fprintf(f, "list_treasures %s", hunt_id);
-
-    fclose(f);
-
-    if(kill(monitor_pid, SIGUSR1) == -1) {
-        perror("error killing monitor\n");
-        exit(-1);
-    }
+    FILE *fp = fopen(commands, "w");
+    fprintf(fp, "list_treasures %s ceva\n", hunt_id);
+    fclose(fp);
+    kill(monitor_pid, SIGUSR1);
 }
 
 void manage_child_sig(int signal) {
@@ -231,7 +221,7 @@ void manage_child_sig(int signal) {
     return;
 }
 
-int main(void) {
+void operation() {
     char command[256];
 
     
@@ -244,7 +234,7 @@ int main(void) {
 
     
     while(1) {
-        //printf("> ");
+        printf("> ");
         if(fgets(command, sizeof(command), stdin) == NULL) break;
         command[strcspn(command, "\n")] = 0;
 
@@ -262,6 +252,9 @@ int main(void) {
                 break;
             }
         }
+        else if(strcmp(command, "list_hunts") == 0) {
+            list_hunts();
+        }
         else if(strncmp(command, "view_treasure", 13) == 0) {
             char hunt_id[100], treasure_id[100];
             if(sscanf(command, "view_treasure %s %s", hunt_id, treasure_id) == 2) {
@@ -270,9 +263,6 @@ int main(void) {
             else {
                 printf("usage: view_treasure <hunt_id> <treasure_id>\n");
             }
-        }
-        else if(strcmp(command, "list_hunts") == 0) {
-            list_hunts();
         }
         else if(strncmp(command, "list_treasures", 14) == 0) {
             char *p = strchr(command, ' ');
@@ -285,6 +275,11 @@ int main(void) {
             printf("invalid command\n");
         }
     }
+}
+
+int main(void) {
+
+    operation();
     
     return 0;
 }
