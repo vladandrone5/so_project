@@ -185,12 +185,15 @@ void signal_exec_manage(int signal) { // varianta cu exec pentru signal manager,
 
             while((data = readdir(dir)) != NULL) {
                 if(data->d_type == DT_DIR && strcmp(data->d_name, ".") != 0 && strcmp(data->d_name, "..") != 0) {
+                    
                     char path[256];
                     snprintf(path, sizeof(path), "%s/treasures.dat", data->d_name);
+                    
                     FILE *tr_f = fopen(path, "rb");
                     if(tr_f == NULL) {
                         continue;
                     }
+                    
 
                     int cnt = 0;
                     treasure t;
@@ -200,7 +203,7 @@ void signal_exec_manage(int signal) { // varianta cu exec pentru signal manager,
                     }
 
                     fclose(tr_f);
-                    printf("Hunt: %s - Treasures: %d\n", data->d_name, cnt);
+                    printf("Hunt: %s - Treasures: %d\n",data->d_name, cnt);
                 }
             }
             closedir(dir);
