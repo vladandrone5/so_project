@@ -81,6 +81,18 @@ void create_hunt(const char *hunt_id) {
         perror("error creating symlink\n");
         exit(-1);
     }
+
+    char dir_path[256];
+    snprintf(dir_path, sizeof(dir_path), "%s/%s", hunt_id, "treasures.dat");
+    int fd_d = open(dir_path, O_WRONLY | O_CREAT | O_APPEND, 0666);
+    if(fd_d == -1) {
+        perror("error creating treasure file in create hunt\n");
+        exit(-1);
+    }
+    if(close(fd_d) == -1) {
+        perror("error closing path\n");
+        exit(-1);
+    }
 }
 
 void log_action(const char *hunt_id, const char *action) {
