@@ -11,6 +11,12 @@
 #define NAME_SIZE 100
 #define LINE_SIZE 1000
 
+/*
+Phase 3 updates:
+- added pipe_command_handle function
+
+*/
+
 pid_t monitor_pid = -1;
 int running_code = 0;
 char commands[] = "commands.txt"; // file care memoreaza ultima comanda
@@ -55,6 +61,40 @@ void execute(char *op, char **args) {
     else {
         int status;
         waitpid(pid, &status, 0);
+    }
+}
+
+void pipe_command_run(char **args) {
+    int pipefd[2];
+    if(pipe(pipefd) == -1) {
+        perror("pipe error\n");
+        exit(-1);
+    }
+
+    pid_t pid = fork();
+    if(pid < 0) {
+        perror("fork error\n");
+        exit(-1);
+    }
+
+    if(pid == 0) { //child
+        close(pipefd[0]);
+        dup2(pipefd[1], STDOUT_FILENO); // redirectez stdout in pipe
+        close(pipefd[1]);
+        execvp(args[0], args);
+        perror("error exec function\n");
+        exit(-1);
+    }
+    else {
+        close(pipefd[1]);
+        char buffer[256];
+        ssize_t read_size;
+        while((read_size = read(pipefd[0], buffer, sizeof(buffer) - 1)) > 0) {
+            buffer[read_size] = '\0';
+            printf("%s", buffer);
+        }
+        close(pipefd[0]);
+        wait(NULL);
     }
 }
 
@@ -137,6 +177,7 @@ void manage_signals(int signal) { // modul de response la semnale
     }
 }
 
+/*
 void signal_exec_manage(int signal) { // varianta cu exec pentru signal manager, momentan doar de test
     if(signal == SIGUSR1) {
         FILE *f = fopen(commands, "r");
@@ -214,6 +255,7 @@ void signal_exec_manage(int signal) { // varianta cu exec pentru signal manager,
         exit(0);
     }
 }
+*/
 
 void create_loop() {
     struct sigaction sg;

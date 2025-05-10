@@ -19,6 +19,7 @@ int treasure_count = 0;
 Current progress:
 -treasure counting variable added
 -added treasure count function
+-changed create_hunt to create a treasure file when called
 */
 
 /*structuri specifice-----------------------------------*/
