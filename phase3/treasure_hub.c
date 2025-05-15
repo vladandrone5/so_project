@@ -6,6 +6,7 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include <time.h>
 
 #define SIZE 100
 #define NAME_SIZE 100
@@ -14,10 +15,12 @@
 /*
 Phase 3 updates:
 - added pipe_command_handle function
-
+- added exec manage signals and with pipes
+- updated the start function to redirect the stdout to pipe
 */
 
 pid_t monitor_pid = -1;
+int monitor_pipe[2];
 int running_code = 0;
 char commands[] = "commands.txt"; // file care memoreaza ultima comanda
 
@@ -78,25 +81,39 @@ void pipe_command_run(char **args) {
     }
 
     if(pid == 0) { //child
-        close(pipefd[0]);
-        dup2(pipefd[1], STDOUT_FILENO); // redirectez stdout in pipe
-        close(pipefd[1]);
+        close(pipefd[0]); // close read
+        if(dup2(pipefd[1], STDOUT_FILENO) == -1) { // redirectez stdout in pipe
+            perror("dup2 error\n");
+            exit(-1);
+        }
+        close(pipefd[1]); // close write
+        printf("executing command: %s\n", args[0]);
         execvp(args[0], args);
         perror("error exec function\n");
         exit(-1);
     }
-    else {
+    else { // parent
         close(pipefd[1]);
+
         char buffer[256];
         ssize_t read_size;
+        FILE *output = fopen("output.txt", "w");
+        if(output == NULL) {
+            perror("error opening output file\n");
+            exit(-1);
+        }
         while((read_size = read(pipefd[0], buffer, sizeof(buffer) - 1)) > 0) {
             buffer[read_size] = '\0';
-            printf("%s", buffer);
+            fprintf(output, "%s", buffer);
         }
+
         close(pipefd[0]);
+        fclose(output);
         wait(NULL);
     }
 }
+
+
 
 void manage_signals(int signal) { // modul de response la semnale
     if(signal == SIGUSR1) { // citesc din fisierul de comenzi cand primesc SIGUSR1
@@ -177,47 +194,27 @@ void manage_signals(int signal) { // modul de response la semnale
     }
 }
 
-/*
-void signal_exec_manage(int signal) { // varianta cu exec pentru signal manager, momentan doar de test
+void manage_signals_pipe(int signal) {
     if(signal == SIGUSR1) {
         FILE *f = fopen(commands, "r");
         if(f == NULL) {
-            perror("error opening file\n");
+            perror("error opening command file\n");
             exit(-1);
         }
+
+        system("gcc -Wall -o treasure_mananger new_treasure_manager.c");
 
         char command[SIZE], hunt_id[SIZE], treasure_id[SIZE];
-
-        pid_t pid = fork();
-        if(pid == 0) {
-            char *args[] = {"gcc", "-Wall", "-o", "treasure_maanger", "new_treasure_manager.c", NULL};
-            execvp("gcc", args);
-            perror("exec failed\n");
-            exit(-1);
-        }
-        else {
-            int status;
-            waitpid(pid, &status, 0);
-        }
-
         if(fscanf(f, "%s %s %s", command, hunt_id, treasure_id) != 3) {
-            perror("error reading command\n");
+            perror("error reading content\n");
+            fclose(f);
             exit(-1);
         }
-
         fclose(f);
 
-        if(strcmp(command, "list_treasures") == 0) {
-            char *args[] = {"./treasure_manager", "--list", hunt_id, "ceva", NULL};
-            execute("./treasure_manager", args);
-        }
-        else if(strcmp(command, "view_treasure") == 0) {
-            char *args[] = {"./treasure_manager", "--view_treasure", hunt_id, treasure_id, NULL};
-            execute("./treasure_manager", args);
-        }
-        else if(strcmp(command, "list_hunts") == 0) {
+        if(strcmp(command, "list_hunts") == 0) {
             DIR *dir = opendir(".");
-            if(dir == NULL) {
+            if(!dir) {
                 perror("error opening directory\n");
                 exit(-1);
             }
@@ -226,41 +223,46 @@ void signal_exec_manage(int signal) { // varianta cu exec pentru signal manager,
 
             while((data = readdir(dir)) != NULL) {
                 if(data->d_type == DT_DIR && strcmp(data->d_name, ".") != 0 && strcmp(data->d_name, "..") != 0) {
-                    
                     char path[256];
                     snprintf(path, sizeof(path), "%s/treasures.dat", data->d_name);
-                    
                     FILE *tr_f = fopen(path, "rb");
-                    if(tr_f == NULL) {
+                    if(!tr_f) {
                         continue;
                     }
-                    
 
-                    int cnt = 0;
+                    int count = 0;
                     treasure t;
-
-                    while(fread(&t, sizeof(treasure), 1, tr_f) == 1) {
-                        cnt++;
-                    }
-
+                    while(fread(&t, sizeof(treasure), 1, tr_f) == 1) count++;
                     fclose(tr_f);
-                    printf("Hunt: %s - Treasures: %d\n",data->d_name, cnt);
+
+                    printf("Hunt: %s - Treasure: %d\n", data->d_name, count);
                 }
             }
             closedir(dir);
         }
+        else if(strcmp(command, "list_treasures") == 0) {
+            char *args[] = {"./treasure_manager", "--list", hunt_id, "ceva", NULL};
+            pipe_command_run(args);
+        }
+        else if(strcmp(command, "view_treasure") == 0) {
+            char *args[] = {"./treasure_manager", "--view_treasure", hunt_id, treasure_id, NULL};
+            pipe_command_run(args);
+        }
+        fflush(stdout);
+    
     }
     else if(signal == SIGTERM) {
-        usleep(5000000);
-        exit(0);
-    }
+            usleep(5000000);
+            exit(0);
+        }
+
+    
 }
-*/
 
 void create_loop() {
     struct sigaction sg;
     sg.sa_flags = 0;
-    sg.sa_handler = manage_signals; // seteaza functia de handle pe manage_signals
+    sg.sa_handler = manage_signals_pipe; // seteaza functia de handle pe manage_signals
     sigemptyset(&sg.sa_mask); // ce semnale sunt blocate cat ruleaza manage_signals
     sg.sa_flags = 0; // default
     sigaction(SIGUSR1, &sg, NULL); // actiunea in SIGUSR1
@@ -281,6 +283,11 @@ void start() { // porneste monitorul
         exit(-1);
     }
 
+    if(pipe(monitor_pipe) == -1) {
+        perror("pipe creation failed\n");
+        exit(-1);
+    }
+
     pid_t current_pid = fork(); // creaza un child process in background
     if(current_pid < 0) {
         perror("error fork command\n");
@@ -288,10 +295,19 @@ void start() { // porneste monitorul
     }
 
     else if(current_pid == 0) { // daca sunt in child process, creaza loop si asteapta semnale
+        close(monitor_pipe[0]); // inchid read
+
+        if(dup2(monitor_pipe[1], STDOUT_FILENO) == -1) {
+            perror("error duplication\n");
+            exit(-1);
+        }
+        close(monitor_pipe[1]);
+        
         create_loop();
         exit(0);
     }
 
+    close(monitor_pipe[1]); // inchid write
     monitor_pid = current_pid; // salvez in pid-ul monitorului, pid-ul child-ului
     running_code = 1; // monitorul e pornit
 
@@ -317,6 +333,26 @@ void stop() {
     return;
 }
 
+void read_monitor_output() {
+    FILE *f = fopen("output.txt", "a");
+    if(f == NULL) {
+        perror("error opening output file\n");
+        exit(-1);
+    }
+
+    char buffer[256];
+    ssize_t bytes_read;
+    while((bytes_read = read(monitor_pipe[0], buffer, sizeof(buffer) - 1)) > 0) {
+        buffer[bytes_read] = '\0';
+        fprintf(f, "%s", buffer);
+        if(bytes_read < sizeof(buffer) - 1) {
+            break;
+        }
+    }
+
+    fclose(f);
+}
+
 void view_treasure(char *hunt_id, char *treasure_id) {
     if(running_code == 0) {
         perror("monitor not running\n");
@@ -336,6 +372,8 @@ void view_treasure(char *hunt_id, char *treasure_id) {
         perror("error killing monitor\n");
         exit(-1);
     }
+
+    read_monitor_output();    
 }
 
 void list_hunts() { // voi merge pe denumirea standard "Hunt..."
@@ -358,6 +396,8 @@ void list_hunts() { // voi merge pe denumirea standard "Hunt..."
         perror("error killing monitor\n");
         exit(-1);
     }
+
+    read_monitor_output();   
 }
 
 void list_treasures(char *hunt_id) {
@@ -378,6 +418,8 @@ void list_treasures(char *hunt_id) {
         perror("error killing monitor\n");
         exit(-1);
     }
+
+    read_monitor_output();
 }
 
 void manage_child_sig(int signal) { // asteapta sa se termine child process-ul iar apoi printeaza ca s-a inchis(verif)
@@ -387,6 +429,7 @@ void manage_child_sig(int signal) { // asteapta sa se termine child process-ul i
 
     return;
 }
+
 
 void operation() {
     char command[256]; // string pentru comanda
