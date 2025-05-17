@@ -248,6 +248,10 @@ void manage_signals_pipe(int signal) {
             char *args[] = {"./treasure_manager", "--view_treasure", hunt_id, treasure_id, NULL};
             pipe_command_run(args);
         }
+        else if(strcmp(command, "calculate_score") == 0) {
+            char *args[] = {"./treasure_manager", "--calculate_score", hunt_id, "ceva", NULL};
+            pipe_command_run(args);
+        }
         fflush(stdout);
     
     }
@@ -334,7 +338,7 @@ void stop() {
 }
 
 void read_monitor_output() {
-    FILE *f = fopen("output.txt", "a");
+    FILE *f = fopen("output.txt", "w");
     if(f == NULL) {
         perror("error opening output file\n");
         exit(-1);
@@ -422,6 +426,47 @@ void list_treasures(char *hunt_id) {
     read_monitor_output();
 }
 
+void calculate_score(char *hunt_id) {
+    if(running_code == 0) {
+        perror("no monitor running\n");
+        exit(-1);
+    }
+
+    FILE *f = fopen(commands, "w");
+    if(f == NULL) {
+        perror("error opening command file\n");
+        exit(-1);
+    }
+
+    fprintf(f, "calculate_score %s ceva\n", hunt_id);
+
+    fclose(f);
+
+    if(kill(monitor_pid, SIGUSR1) == -1) {
+        perror("error killing monitor\n");
+        exit(-1);
+    }
+
+    read_monitor_output();
+}
+
+void print_from_file(char *filename) {
+    FILE *f = fopen(filename, "r");
+
+    if(f == NULL) {
+        perror("error opening output file\n");
+        exit(-1);
+    }
+
+    char line[256];
+    while(fgets(line, sizeof(line), f)) {
+        if(strstr(line, "Monitor")) continue;
+        fputs(line, stdout);
+    }
+
+    fclose(f);
+}
+
 void manage_child_sig(int signal) { // asteapta sa se termine child process-ul iar apoi printeaza ca s-a inchis(verif)
     int status;
     wait(&status);
@@ -464,11 +509,13 @@ void operation() {
         }
         else if(strcmp(command, "list_hunts") == 0) {
             list_hunts();
+            print_from_file("output.txt");
         }
         else if(strncmp(command, "view_treasure", 13) == 0) {
             char hunt_id[100], treasure_id[100];
             if(sscanf(command, "view_treasure %s %s", hunt_id, treasure_id) == 2) {
                 view_treasure(hunt_id, treasure_id);
+                print_from_file("output.txt");
             }
             else {
                 printf("usage: view_treasure <hunt_id> <treasure_id>\n");
@@ -476,9 +523,22 @@ void operation() {
         }
         else if(strncmp(command, "list_treasures", 14) == 0) {
             char *p = strchr(command, ' ');
-            if(p) list_treasures(p + 1);
+            if(p) {
+                list_treasures(p + 1);
+                print_from_file("output.txt");
+            }
             else {
                 printf("usage: list_treasures <hunt_id>\n");
+            }
+        }
+        else if(strncmp(command, "calculate_score", 15) == 0) {
+            char hunt_id[100];
+            if(sscanf(command, "calculate_score %s", hunt_id) == 1) {
+                calculate_score(hunt_id);
+                print_from_file("output.txt");
+            }
+            else {
+                printf("usage: calculate_score <hunt_id> <treasure_id>\n");
             }
         }
         else {

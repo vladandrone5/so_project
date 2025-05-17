@@ -437,6 +437,29 @@ int count_treasures(char *hunt_id) {
     return count;
 }
 
+void calculate_score(char *hunt_id) {
+    char path[256];
+    snprintf(path, sizeof(path), "%s/treasures.dat", hunt_id);
+
+    int fd = open(path, O_RDONLY);
+    if(fd == -1) {
+        perror("error opening file\n");
+        exit(-1);
+    }   
+
+    treasure t;
+    ssize_t read_size;
+    int score = 0;
+    while((read_size = read(fd, &t, sizeof(treasure))) > 0) {
+        score += t.value;
+    }
+
+    printf("Total score in %s is: %d\n", hunt_id, score);
+    close(fd);
+
+    return;
+}
+
 void process_operation(char *operation, char *hunt_id, char *treasure_id) {
     if(strcmp(operation, "--add") == 0) {
         treasure t = {0};
@@ -475,6 +498,13 @@ void process_operation(char *operation, char *hunt_id, char *treasure_id) {
     }
     else if(strcmp(operation, "--show_log") == 0) {
         print_log_info(hunt_id);
+        return;
+    }
+    else if(strcmp(operation, "--calculate_score") == 0) {
+        calculate_score(hunt_id);
+    }
+    else {
+        printf("invalid command\n");
         return;
     }
 
