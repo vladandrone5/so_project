@@ -1,29 +1,27 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
-
-// calculeaza scor in functie de user
+#include <string.h>
 
 #define NAME_SIZE 100
 #define LINE_SIZE 1000
-#define MAX_USERS 100
 
 typedef struct {
     char treasure_id[10];
-    char username[NAME_SIZE];
+    char username[NAME_SIZE + 1];
     double latitude, longitude;
-    char clue[LINE_SIZE];
+    char clue[LINE_SIZE + 1];
     int value;
-} treasure;
+}treasure;
 
 int main(int argc, char **argv) {
-    if(argc != 2) {
-        perror("format incorect\n");
+    if(argc != 3) {
+        perror("format incorect!\n");
         exit(-1);
     }
 
+    treasure t;
     char path[256];
     snprintf(path, sizeof(path), "%s/treasures.dat", argv[1]);
 
@@ -31,16 +29,42 @@ int main(int argc, char **argv) {
     if(fd == -1) {
         perror("error opening treasure file\n");
         exit(-1);
-    }  
+    }
 
-    treasure t;
-    int total_score = 0;
-    ssize_t read_size;
-    while((read_size = read(fd, &t, sizeof(treasure))) > 0) {
-        total_score += t.value;
+    ssize_t bytes_read;
+    int found = 0;
+    while((bytes_read = read(fd, &t, sizeof(treasure))) > 0) {
+        if(strcmp(t.username, argv[2]) == 0) {
+            found = 1;
+            break;
+        }
+    }
+
+    if(found == 0) {
+        perror("username not found in Hunt\n");
+        exit(-1);
     }
     close(fd);
 
-    printf("Total score from %s is: %d\n", argv[1], total_score);
+    fd = open(path, O_RDONLY);
+    if(fd == -1) {
+        perror("error opening treasure file\n");
+        exit(-1);
+    }
+
+    ssize_t read_size;
+    int s = 0;
+    while((read_size = read(fd, &t, sizeof(treasure))) > 0) {
+        if(strcmp(t.username, argv[2]) == 0) {
+            s += t.value;
+        }
+    }
+
+    close(fd);
+
+    printf("\nScore from %s for the user \"%s\" is: %d\n", argv[1], argv[2], s);
+    fflush(stdout); // fortez output-ul
+
+
     return 0;
 }

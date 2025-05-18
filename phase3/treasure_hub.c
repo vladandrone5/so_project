@@ -13,10 +13,17 @@
 #define LINE_SIZE 1000
 
 /*
+Quick description: Monitor doesn't print the output, it is redirected through a pipe
+and then printed in an output file. Then printed to terminal from the main process
+
 Phase 3 updates:
 - added pipe_command_handle function
 - added exec manage signals and with pipes
 - updated the start function to redirect the stdout to pipe
+- added the calculator function
+- handled the printing function (reads from pipe) and then reads from output file
+- added calc function for a given user
+- added a wait period to list hunts for fully update the pipe output
 */
 
 pid_t monitor_pid = -1;
@@ -50,23 +57,6 @@ void create_hunt(char *hunt_id);
 
 /*------------------------------------*/
 
-void execute(char *op, char **args) {
-    pid_t pid = fork();
-    if(pid == -1) {
-        perror("error fork\n");
-        exit(-1);
-    }
-    else if(pid == 0) {
-        execvp(op, args);
-        perror("exec failed\n");
-        exit(-1);   
-    }
-    else {
-        int status;
-        waitpid(pid, &status, 0);
-    }
-}
-
 void pipe_command_run(char **args) {
     int pipefd[2];
     if(pipe(pipefd) == -1) {
@@ -88,6 +78,7 @@ void pipe_command_run(char **args) {
         }
         close(pipefd[1]); // close write
         printf("executing command: %s\n", args[0]);
+        fflush(stdout);
         execvp(args[0], args);
         perror("error exec function\n");
         exit(-1);
@@ -107,90 +98,12 @@ void pipe_command_run(char **args) {
             fprintf(output, "%s", buffer);
         }
 
-        close(pipefd[0]);
+        if(close(pipefd[0]) == -1) {
+            perror("error closing pipe fd\n");
+            exit(-1);
+        }
         fclose(output);
         wait(NULL);
-    }
-}
-
-
-
-void manage_signals(int signal) { // modul de response la semnale
-    if(signal == SIGUSR1) { // citesc din fisierul de comenzi cand primesc SIGUSR1
-        FILE *f = NULL;
-        if((f = fopen(commands, "r")) == 0) {
-            perror("error opening command file\n");
-            exit(-1);
-        }
-
-        char command[SIZE], hunt_id[SIZE], treasure_id[SIZE];
-
-        system("gcc -Wall -o treasure_manager new_treasure_manager.c");
-
-        // in functie de comanda executa operatia corespunzatoare
-        if(fscanf(f, "%s %s %s", command, hunt_id, treasure_id) != 3) {
-            perror("error reading content\n");
-            exit(-1);
-        }
-
-        if(fclose(f) != 0) {
-            perror("error closing file\n");
-            exit(-1);
-        }
-
-        if(strcmp(command, "list_hunts") == 0) { //LIST_HUNTS
-            DIR *dir = opendir("."); // directorul curent -> caut toate hunt-urile
-            if(dir == NULL) {
-                perror("error opening directory\n");
-                exit(-1);
-            }
-
-            struct dirent *data;
-
-            while((data = readdir(dir)) != NULL) {
-                if(data->d_type == DT_DIR && strcmp(data->d_name, ".") != 0 && strcmp(data->d_name, "..") != 0) {
-                    char path[256];
-                    snprintf(path, sizeof(path), "%s/treasures.dat", data->d_name);
-
-                    FILE *tr_f = fopen(path, "rb");
-                    if(tr_f == NULL) { // verific daca exista file-ul de treasure, daca nu sare peste
-                        continue;
-                    }
-
-                    int cnt = 0;
-                    treasure t;
-                    while(fread(&t, sizeof(treasure), 1, tr_f) == 1) {
-                        cnt++;
-                    }
-
-                    fclose(tr_f);
-
-                    printf("Hunt: %s - Treasures: %d\n", data->d_name, cnt);
-                }
-            }
-            closedir(dir);
-        }
-        else if(strcmp(command, "list_treasures") == 0) { // LIST_TREASURES
-            char op[256];
-            snprintf(op, sizeof(op), "./treasure_manager --list %s ceva", hunt_id);
-            if(system(op) == -1) {
-                perror("error operation\n");
-                exit(-1);
-            }
-        }
-        else if(strcmp(command, "view_treasure") == 0) { // VIEW_TREASURES
-            char op[256];
-            snprintf(op, sizeof(op), "./treasure_manager --view_treasure %s %s", hunt_id, treasure_id);
-            if(system(op) == -1) {
-                perror("error operation\n");
-                exit(-1);
-            }
-        }
-        else if(signal == SIGTERM) { // asteapta 5 secunde si se inchide daca primeste SIGTERM
-            usleep(5000000);
-            exit(0);
-        }
-
     }
 }
 
@@ -202,7 +115,15 @@ void manage_signals_pipe(int signal) {
             exit(-1);
         }
 
-        system("gcc -Wall -o treasure_mananger new_treasure_manager.c");
+        if(system("gcc -Wall -o treasure_mananger treasure_manager.c") == -1) {
+            perror("error compiling treasure manager\n");
+            exit(-1);
+        }
+
+        if(system("gcc -Wall -o c calculator.c") == -1) {
+            perror("error compiling calculator\n");
+            exit(-1);
+        }
 
         char command[SIZE], hunt_id[SIZE], treasure_id[SIZE];
         if(fscanf(f, "%s %s %s", command, hunt_id, treasure_id) != 3) {
@@ -236,6 +157,7 @@ void manage_signals_pipe(int signal) {
                     fclose(tr_f);
 
                     printf("Hunt: %s - Treasure: %d\n", data->d_name, count);
+                    fflush(stdout);
                 }
             }
             closedir(dir);
@@ -252,7 +174,11 @@ void manage_signals_pipe(int signal) {
             char *args[] = {"./treasure_manager", "--calculate_score", hunt_id, "ceva", NULL};
             pipe_command_run(args);
         }
-        fflush(stdout);
+        else if(strcmp(command, "calc_score") == 0) { // task principal
+            char *args[] = {"./treasure_manager", "--calc_score", hunt_id, treasure_id, NULL};
+            pipe_command_run(args);
+        }
+        fflush(stdout); // eliberez output-ul
     
     }
     else if(signal == SIGTERM) {
@@ -284,7 +210,7 @@ void create_loop() {
 void start() { // porneste monitorul
     if(running_code != 0) { // verif daca monitorul este deja deschis
         perror("monitor already runs\n");
-        exit(-1);
+        return;
     }
 
     if(pipe(monitor_pipe) == -1) {
@@ -323,7 +249,7 @@ void start() { // porneste monitorul
 void stop() {
     if(running_code == 0) {
         perror("no monitor is running\n");
-        exit(-1);
+        return;
     }
 
     if(kill(monitor_pid, SIGTERM) == -1) { // trimit SIGTERM pentru a inchide monitorul
@@ -349,9 +275,11 @@ void read_monitor_output() {
     while((bytes_read = read(monitor_pipe[0], buffer, sizeof(buffer) - 1)) > 0) {
         buffer[bytes_read] = '\0';
         fprintf(f, "%s", buffer);
-        if(bytes_read < sizeof(buffer) - 1) {
+        
+        if(bytes_read < sizeof(buffer)) {
             break;
         }
+        
     }
 
     fclose(f);
@@ -359,7 +287,7 @@ void read_monitor_output() {
 
 void view_treasure(char *hunt_id, char *treasure_id) {
     if(running_code == 0) {
-        perror("monitor not running\n");
+        perror("monitor not running or monitor is closing\n");
         exit(-1);
     }
 
@@ -382,8 +310,8 @@ void view_treasure(char *hunt_id, char *treasure_id) {
 
 void list_hunts() { // voi merge pe denumirea standard "Hunt..."
     if(running_code == 0) {
-        perror("no monitor running\n");
-        exit(-1);
+        perror("no monitor running or monitor is closing\n");
+        return;
     }
 
     FILE *f = fopen(commands, "w");
@@ -401,12 +329,13 @@ void list_hunts() { // voi merge pe denumirea standard "Hunt..."
         exit(-1);
     }
 
+    usleep(500000); // pt a avea timp sa fie scris in pipe
     read_monitor_output();   
 }
 
 void list_treasures(char *hunt_id) {
     if (running_code == 0) {
-        printf("Monitor not running.\n");
+        printf("no monitor running or monitor is closing\n");
         return;
     }
     FILE *fp = fopen(commands, "w");
@@ -428,8 +357,8 @@ void list_treasures(char *hunt_id) {
 
 void calculate_score(char *hunt_id) {
     if(running_code == 0) {
-        perror("no monitor running\n");
-        exit(-1);
+        perror("no monitor running or monitor is closing\n");
+        return;
     }
 
     FILE *f = fopen(commands, "w");
@@ -450,6 +379,30 @@ void calculate_score(char *hunt_id) {
     read_monitor_output();
 }
 
+void calc_scores_by_user(char *hunt_id, char *user) {
+    if(running_code == 0) {
+        perror("no monitor running or monitor is closing\n");
+        return;
+    }
+
+    FILE *f = fopen(commands, "w");
+    if(f == NULL) {
+        perror("error opening output file\n");
+        exit(-1);
+    }
+
+    fprintf(f, "calc_score %s %s\n", hunt_id, user);
+
+    fclose(f);
+
+    if(kill(monitor_pid, SIGUSR1) == -1) {
+        perror("error killing monitor\n");
+        exit(-1);
+    }
+
+    read_monitor_output();
+}
+
 void print_from_file(char *filename) {
     FILE *f = fopen(filename, "r");
 
@@ -458,7 +411,7 @@ void print_from_file(char *filename) {
         exit(-1);
     }
 
-    char line[256];
+    char line[1024];
     while(fgets(line, sizeof(line), f)) {
         if(strstr(line, "Monitor")) continue;
         fputs(line, stdout);
@@ -531,14 +484,24 @@ void operation() {
                 printf("usage: list_treasures <hunt_id>\n");
             }
         }
-        else if(strncmp(command, "calculate_score", 15) == 0) {
+        else if(strncmp(command, "calculate_score", 15) == 0) { // value total
             char hunt_id[100];
             if(sscanf(command, "calculate_score %s", hunt_id) == 1) {
                 calculate_score(hunt_id);
                 print_from_file("output.txt");
             }
             else {
-                printf("usage: calculate_score <hunt_id> <treasure_id>\n");
+                printf("usage: calculate_score <hunt_id>\n");
+            }
+        }
+        else if(strncmp(command, "calc_score", 10) == 0) { // total value per given username in a hunt
+            char hunt_id[100], user[100];
+            if(sscanf(command, "calc_score %s %s", hunt_id, user) == 2) {
+                calc_scores_by_user(hunt_id, user);
+                print_from_file("output.txt");
+            }
+            else {
+                printf("usage: calc_score <hunt_id> <username>\n");
             }
         }
         else {
